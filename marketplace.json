@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "id": "agent-reach",
+      "recommended": true,
+      "tags": ["research", "web", "social"],
+      "order": 10
+    },
+    {
+      "id": "brainstorming",
+      "recommended": true,
+      "tags": ["planning", "design"],
+      "order": 20
+    },
+    {
+      "id": "dws",
+      "recommended": true,
+      "tags": ["dingtalk", "workspace"],
+      "order": 30
+    },
+    {
+      "id": "openspec-explore",
+      "recommended": true,
+      "tags": ["openspec", "explore"],
+      "order": 40
+    },
+    {
+      "id": "openspec-propose",
+      "recommended": true,
+      "tags": ["openspec", "planning"],
+      "order": 50
+    },
+    {
+      "id": "openspec-apply-change",
+      "recommended": true,
+      "tags": ["openspec", "implementation"],
+      "order": 60
+    },
+    {
+      "id": "openspec-archive-change",
+      "recommended": true,
+      "tags": ["openspec", "archive"],
+      "order": 70
+    },
+    {
+      "id": "image-compliance-review",
+      "recommended": true,
+      "tags": ["image-review", "compliance"],
+      "order": 80
+    },
+    {
+      "id": "tax-exemption-ai-review",
+      "recommended": true,
+      "tags": ["tax", "review"],
+      "order": 90
+    }
+  ]
+}
