@@ -6,12 +6,13 @@ Approve only when all approval checks pass:
 
 - Submitted application is pending.
 - Certificate file is accessible and readable.
+- Document is clearly a tax exemption certificate or a state resale/exemption certificate, not an unrelated image, landscape/photo, receipt, invoice, screenshot without certificate text, blank file, or generic business document.
 - Certificate state matches submitted `state_code` or `state_name`.
 - Certificate organization/customer name reasonably matches submitted `organization_name`.
 - Certificate Tax ID / Exempt ID matches at least one submitted identifier: `state_tax_number` or `exemption_num`.
 - Certificate is currently valid and not visibly expired, revoked, void, sample-only, or incomplete.
 - Expiration date can be computed by the rules below.
-- OCR/vision confidence is high enough to support the decision.
+- OCR/vision confidence and approval confidence are both high enough to support the decision.
 
 Return `status=rejected` for everything else and write the result through the audit API.
 
@@ -27,10 +28,24 @@ Return `status=rejected` for everything else and write the result through the au
    - OCR only certificate pages or images that contain text.
 
 3. Batch cautiously.
-   - Fetch small batches.
+   - Fetch all pending pages first when the user asks to review current pending applications.
+   - Then process records in model batches of 5-10 items, even if the host application already supports chunked image upload.
+   - Never put more than 10 pending records into a single model reasoning batch.
    - Approve one item at a time after producing evidence.
    - Do not bulk approve without per-item evidence.
    - Count every reviewed item as `approved` or `rejected`.
+
+## Confidence Policy
+
+Assign `approval_confidence` for each reviewed item:
+
+- `high`: every required approval check has direct evidence from submitted metadata plus extracted certificate text/vision, document type is clearly a tax exemption certificate, expiration can be computed, and there are no contradictions.
+- `medium`: the document appears relevant but at least one required field is inferred, partially unreadable, missing, ambiguous, or unsupported by direct evidence.
+- `low`: the file is unrelated, blank, a landscape/photo, not certificate-like, OCR is poor, core fields are unreadable, or extracted evidence conflicts with submitted metadata.
+
+Only `high` confidence may be approved.
+`medium` and `low` confidence must be written as `status=rejected` for human follow-up.
+Any missing, unknown, unreadable, unsupported, or contradictory required field prevents `high` confidence.
 
 ## Field Normalization
 
@@ -64,7 +79,7 @@ Use one of the three standard `refuse_reason` strings whenever possible:
 
 2. Invalid tax exemption certificate:
    - Use `the document provided is not a valid tax exemption certificate.`
-   - Applies when the document is not a tax exemption certificate, state mismatches, organization mismatches, Tax ID / Exempt ID mismatches, required certificate fields are missing, the certificate is revoked/void/sample-only, or the document cannot prove exemption validity.
+   - Applies when the document is not a tax exemption certificate, is an unrelated photo/landscape/screenshot without certificate text, state mismatches, organization mismatches, Tax ID / Exempt ID mismatches, required certificate fields are missing, the certificate is revoked/void/sample-only, or the document cannot prove exemption validity.
 
 3. Unclear certificate image:
    - Use `the image of the certificate is unclear and cannot be verified.`
@@ -82,4 +97,5 @@ After processing a batch, report:
 - Approved count.
 - Rejected count.
 - Skipped/error count.
-- Rejected IDs, standard refuse reasons, and concise internal details requiring human follow-up.
+- Confidence counts: high, medium, low.
+- Rejected IDs, confidence, standard refuse reasons, and concise internal details requiring human follow-up.

@@ -39,6 +39,7 @@ Review pending tax exemption applications quickly and conservatively. Use only t
    - Process only items with `status=pending`.
    - If `cert_url` is missing or contains unresolved placeholders such as `{{file_url}}` or `{{file_path}}`, write `status=rejected` with a concise technical reason because the standard three refusal reasons do not cover missing files.
    - If a test `cert_url` under `https://media.test.jeeda.net/` returns `403 AccessDenied`, retry the same object key through `https://jeeda-media.s3.us-west-2.amazonaws.com/` before deciding the file is inaccessible.
+   - Even if the host app can upload or display images in chunks, review pending records in explicit model batches of 5-10 items. Finish one batch with per-item evidence before starting the next batch.
 
 2. Precheck submitted metadata before reading the certificate.
    - Required submitted fields: `organization_name`, `state_code` or `state_name`, and at least one of `state_tax_number` or `exemption_num`.
@@ -58,7 +59,8 @@ Review pending tax exemption applications quickly and conservatively. Use only t
    - Extract explicit expiration date and issue/signature date when present.
 
 5. Decide outcome.
-   - `approved`: only when state, name/organization, ID, and validity evidence are all clear enough.
+   - `approved`: only when document type, state, name/organization, ID, validity, expiration evidence, and confidence are all clear enough.
+   - Require `confidence=high` before approving. Medium or low confidence must be returned as `rejected` for human follow-up.
    - `rejected`: for every mismatch, missing field, weak OCR, unreadable file, ambiguous date, expired certificate, or unsupported certificate type.
    - Treat every `rejected` item as requiring human follow-up in the run summary.
    - Do not treat a transport check, API smoke test, or URL reachability check as a completed audit.
@@ -92,14 +94,18 @@ Use this structure even if the active model has poor OCR:
   "certificate_validity_status": "valid|expired|revoked|unknown",
   "explicit_expiration_date": "",
   "issue_or_signature_date": "",
+  "document_type_evidence": "",
+  "approval_confidence": "high|medium|low",
   "ocr_confidence": "high|medium|low",
   "evidence": []
 }
 ```
 
-3. If the active model cannot produce this structure from the document with high confidence, use OCR/vision tooling or ask for extracted text. If still uncertain, write `status=rejected` with the unclear-image standard reason.
-4. Use exact values and short evidence snippets; do not invent missing dates or IDs.
-5. Fail closed: uncertainty means manual review, not approval.
+3. If any required field is missing, unknown, unreadable, unsupported, or contradicted, confidence cannot be high.
+4. If the active model cannot produce this structure from the document with high confidence, use OCR/vision tooling or ask for extracted text. If still uncertain, write `status=rejected` with the unclear-image standard reason.
+5. Do not approve unrelated photos, landscape images, screenshots without certificate text, blank files, receipts, invoices, or generic business documents. These are invalid tax exemption certificate submissions.
+6. Use exact values and short evidence snippets; do not invent missing dates or IDs.
+7. Fail closed: uncertainty means manual review, not approval.
 
 ## API Helper
 
@@ -137,12 +143,19 @@ After processing, output only:
 
 ```json
 {
+  "batch_count": 0,
   "processed_count": 0,
   "approved_count": 0,
   "rejected_count": 0,
+  "confidence_summary": {
+    "high": 0,
+    "medium": 0,
+    "low": 0
+  },
   "rejected_items": [
     {
       "exemption_id": 0,
+      "confidence": "medium|low",
       "refuse_reason": ""
     }
   ]
