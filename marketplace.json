@@ -4,56 +4,114 @@
     {
       "id": "agent-reach",
       "recommended": true,
-      "tags": ["research", "web", "social"],
+      "tags": [
+        "research",
+        "web",
+        "social"
+      ],
       "order": 10
     },
     {
       "id": "brainstorming",
       "recommended": true,
-      "tags": ["planning", "design"],
+      "tags": [
+        "planning",
+        "design"
+      ],
       "order": 20
     },
     {
       "id": "dws",
       "recommended": true,
-      "tags": ["dingtalk", "workspace"],
+      "tags": [
+        "dingtalk",
+        "workspace"
+      ],
       "order": 30
     },
     {
       "id": "openspec-explore",
       "recommended": true,
-      "tags": ["openspec", "explore"],
+      "tags": [
+        "openspec",
+        "explore"
+      ],
       "order": 40
     },
     {
       "id": "openspec-propose",
       "recommended": true,
-      "tags": ["openspec", "planning"],
+      "tags": [
+        "openspec",
+        "planning"
+      ],
       "order": 50
     },
     {
       "id": "openspec-apply-change",
       "recommended": true,
-      "tags": ["openspec", "implementation"],
+      "tags": [
+        "openspec",
+        "implementation"
+      ],
       "order": 60
     },
     {
       "id": "openspec-archive-change",
       "recommended": true,
-      "tags": ["openspec", "archive"],
+      "tags": [
+        "openspec",
+        "archive"
+      ],
       "order": 70
     },
     {
       "id": "image-compliance-review",
       "recommended": true,
-      "tags": ["image-review", "compliance"],
+      "tags": [
+        "image-review",
+        "compliance"
+      ],
       "order": 80
     },
     {
       "id": "tax-exemption-ai-review",
       "recommended": true,
-      "tags": ["tax", "review"],
+      "tags": [
+        "tax",
+        "review"
+      ],
       "order": 90
+    },
+    {
+      "id": "opencli-usage",
+      "recommended": true,
+      "tags": [
+        "opencli",
+        "cli",
+        "orientation"
+      ],
+      "order": 100
+    },
+    {
+      "id": "smart-search",
+      "recommended": true,
+      "tags": [
+        "opencli",
+        "search",
+        "research"
+      ],
+      "order": 110
+    },
+    {
+      "id": "design-taste-frontend",
+      "recommended": true,
+      "tags": [
+        "frontend",
+        "design",
+        "taste"
+      ],
+      "order": 120
     }
   ]
 }
