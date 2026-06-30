@@ -224,6 +224,7 @@ class ExpiryTests(unittest.TestCase):
         args = argparse.Namespace(
             explicit_expiration="2026-06-16",
             issue_date=None,
+            effective_date=None,
             submitted_at=None,
         )
 
@@ -233,6 +234,42 @@ class ExpiryTests(unittest.TestCase):
         printed = print_mock.call_args.args[0]
         self.assertIn('"expired_at": "2026-06-16 23:59:59"', printed)
         self.assertIn('"source": "explicit_expiration"', printed)
+
+    def test_expiry_falls_back_to_submitted_year_end_when_issue_plus_one_year_is_past(self):
+        expiry, source = review.compute_expiry_result(
+            explicit_expiration=None,
+            issue_date="2024-01-01",
+            effective_date=None,
+            submitted_at="2026-06-30 10:00:00",
+            today=dt.datetime(2026, 6, 30, 12, 0, 0, tzinfo=review.BUSINESS_TZ),
+        )
+
+        self.assertEqual(expiry.strftime("%Y-%m-%d %H:%M:%S"), "2026-12-31 23:59:59")
+        self.assertEqual(source, "submitted_year_end_fallback")
+
+    def test_explicit_expiration_does_not_fall_back_to_submitted_year_end(self):
+        expiry, source = review.compute_expiry_result(
+            explicit_expiration="2025-01-01",
+            issue_date="2024-01-01",
+            effective_date=None,
+            submitted_at="2026-06-30 10:00:00",
+            today=dt.datetime(2026, 6, 30, 12, 0, 0, tzinfo=review.BUSINESS_TZ),
+        )
+
+        self.assertEqual(expiry.strftime("%Y-%m-%d %H:%M:%S"), "2025-01-01 23:59:59")
+        self.assertEqual(source, "explicit_expiration")
+
+    def test_effective_date_uses_same_year_end_fallback_as_issue_date(self):
+        expiry, source = review.compute_expiry_result(
+            explicit_expiration=None,
+            issue_date=None,
+            effective_date="2024-01-01",
+            submitted_at="2026-06-30 10:00:00",
+            today=dt.datetime(2026, 6, 30, 12, 0, 0, tzinfo=review.BUSINESS_TZ),
+        )
+
+        self.assertEqual(expiry.strftime("%Y-%m-%d %H:%M:%S"), "2026-12-31 23:59:59")
+        self.assertEqual(source, "submitted_year_end_fallback")
 
 
 if __name__ == "__main__":

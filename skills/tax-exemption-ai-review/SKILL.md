@@ -41,9 +41,10 @@ Review pending tax exemption applications quickly and conservatively. Use only t
    - If a test `cert_url` under `https://media.test.jeeda.net/` returns `403 AccessDenied`, retry the same object key through `https://jeeda-media.s3.us-west-2.amazonaws.com/` before deciding the file is inaccessible.
    - Even if the host app can upload or display images in chunks, review pending records in explicit model batches of 5-10 items. Finish one batch with per-item evidence before starting the next batch.
 
-2. Precheck submitted metadata before reading the certificate.
-   - Required submitted fields: `organization_name`, `state_code` or `state_name`, and at least one of `state_tax_number` or `exemption_num`.
-   - If submitted metadata is incomplete enough that the certificate cannot be validated, write `status=rejected` with `the document provided is not a valid tax exemption certificate.`
+2. Extract all available submitted and certificate evidence before deciding.
+   - Read submitted `organization_name`, `state_code` or `state_name`, `state_tax_number`, `exemption_num`, and `created_at`.
+   - Extract certificate state, issuing authority, document title, purchaser/licensee name, tax/exempt/permit/account/license ID, effective date, issue/signature date, explicit expiration date, invalid-status language, and text proving exemption or resale eligibility.
+   - If a field is missing from its normal position but appears elsewhere in the certificate, body text, permit text, account table, signature area, address, state agency name, or supplemental page, use that evidence.
    - If the certificate URL is absent or inaccessible, write `status=rejected` with a specific technical reason.
 
 3. Download and extract certificate content.
@@ -58,10 +59,14 @@ Review pending tax exemption applications quickly and conservatively. Use only t
    - Determine whether the certificate is valid, revoked, expired, incomplete, or ambiguous.
    - Extract explicit expiration date and issue/signature date when present.
 
-5. Decide outcome.
-   - `approved`: only when document type, state, name/organization, ID, validity, expiration evidence, and confidence are all clear enough.
-   - Require `confidence=high` before approving. Medium or low confidence must be returned as `rejected` for human follow-up.
-   - `rejected`: for every mismatch, missing field, weak OCR, unreadable file, ambiguous date, expired certificate, or unsupported certificate type.
+5. Decide outcome in this order.
+   - First compare the submitted state with the certificate, license, permit, or proof document state. If the states clearly differ, write `status=rejected` with `the document provided is not a valid tax exemption certificate.` Do not continue to name, ID, expiration, or document-type checks after a clear state mismatch.
+   - If the state matches, determine whether the document is currently valid. If it is explicitly expired, write `status=rejected` with `the submitted tax exemption certificate is expired.` If it is revoked, void, sample-only, incomplete, or clearly unfinished, write `status=rejected` with `the document provided is not a valid tax exemption certificate.`
+   - If the document is valid, decide whether its content proves tax exemption, resale, agricultural exemption, government exemption, or a similar tax-exempt purchasing qualification. Do not require the title to say `resale certificate` or `exemption certificate`. A `Sales Tax License`, `Seller's Permit`, `Sales and Use Tax Permit`, `Agricultural Permit`, or similar document may be accepted when the body text clearly supports resale or tax-exempt purchases, such as `resale`, `tax exempt purchase`, `exempt purchase`, `purchase items tax exempt`, or `for purpose of resale`.
+   - If the document content proves the qualification, compare the certificate name with submitted `organization_name`. Accept clear name variants and explain any agricultural or owner/operator relationship used for matching. Reject clear different-entity mismatches.
+   - If the name matches, compare the relevant Tax ID, Exempt ID, Permit Number, Account Number, Registration Number, or License Number against `state_tax_number` or `exemption_num`, ignoring spaces, hyphens, and case. Prefer IDs related to the exemption/resale/permit qualification over addresses, phone numbers, or unrelated numbers.
+   - If state, validity, qualification content, name, and ID pass, compute `expired_at` and approve only when the computed cutoff is not already expired.
+   - `rejected`: for every clear mismatch, missing required evidence after full extraction, weak OCR, unreadable file, ambiguous date that cannot be resolved, expired certificate, or unsupported proof document.
    - Treat every `rejected` item as requiring human follow-up in the run summary.
    - Do not treat a transport check, API smoke test, or URL reachability check as a completed audit.
 
@@ -94,18 +99,19 @@ Use this structure even if the active model has poor OCR:
   "certificate_validity_status": "valid|expired|revoked|unknown",
   "explicit_expiration_date": "",
   "issue_or_signature_date": "",
+  "effective_date": "",
   "document_type_evidence": "",
-  "approval_confidence": "high|medium|low",
-  "ocr_confidence": "high|medium|low",
+  "qualification_text_evidence": "",
+  "readability": "readable|unclear|unreadable",
   "evidence": []
 }
 ```
 
-3. If any required field is missing, unknown, unreadable, unsupported, or contradicted, confidence cannot be high.
-4. If the active model cannot produce this structure from the document with high confidence, use OCR/vision tooling or ask for extracted text. If still uncertain, write `status=rejected` with the unclear-image standard reason.
-5. Do not approve unrelated photos, landscape images, screenshots without certificate text, blank files, receipts, invoices, or generic business documents. These are invalid tax exemption certificate submissions.
+3. If a required field is missing from its expected location, search the full document before rejecting. Use valid evidence from body text, agency names, account tables, permit text, addresses, signature areas, and supplemental pages.
+4. If the active model cannot produce this structure from the document, use OCR/vision tooling or ask for extracted text. If still uncertain because the document cannot be read, write `status=rejected` with the unclear-image standard reason.
+5. Do not approve unrelated photos, landscape images, screenshots without certificate text, blank files, receipts, invoices, generic business documents, or unfinished templates.
 6. Use exact values and short evidence snippets; do not invent missing dates or IDs.
-7. Fail closed: uncertainty means manual review, not approval.
+7. Fail closed: unresolved uncertainty after full extraction means human review, not approval.
 
 ## API Helper
 
@@ -136,6 +142,8 @@ python3 ~/.codex/skills/tax-exemption-ai-review/scripts/tax_exemption_review.py 
 
 The `expiry` helper returns the certificate cutoff date in US Eastern business time.
 For example, `2026-06-16` returns `2026-06-16 23:59:59`.
+When `--issue-date` and `--submitted-at` are both provided and issue date plus one year is already past, the helper falls back to December 31 of the submitted year.
+`--effective-date` follows the same rule as `--issue-date` when no explicit expiration date exists.
 
 ## Run summary
 
@@ -147,15 +155,9 @@ After processing, output only:
   "processed_count": 0,
   "approved_count": 0,
   "rejected_count": 0,
-  "confidence_summary": {
-    "high": 0,
-    "medium": 0,
-    "low": 0
-  },
   "rejected_items": [
     {
       "exemption_id": 0,
-      "confidence": "medium|low",
       "refuse_reason": ""
     }
   ]

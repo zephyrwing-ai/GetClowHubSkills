@@ -2,19 +2,43 @@
 
 ## Decision Policy
 
-Approve only when all approval checks pass:
+Extract all available evidence first, then decide in order. Do not reject only because a field is missing from its usual location if the same evidence appears elsewhere in the certificate, license, permit, body text, address, account table, issuing agency, signature area, or supplemental page.
 
-- Submitted application is pending.
-- Certificate file is accessible and readable.
-- Document is clearly a tax exemption certificate or a state resale/exemption certificate, not an unrelated image, landscape/photo, receipt, invoice, screenshot without certificate text, blank file, or generic business document.
-- Certificate state matches submitted `state_code` or `state_name`.
-- Certificate organization/customer name reasonably matches submitted `organization_name`.
-- Certificate Tax ID / Exempt ID matches at least one submitted identifier: `state_tax_number` or `exemption_num`.
-- Certificate is currently valid and not visibly expired, revoked, void, sample-only, or incomplete.
-- Expiration date can be computed by the rules below.
-- OCR/vision confidence and approval confidence are both high enough to support the decision.
+Approve only when this ordered review reaches the end:
 
-Return `status=rejected` for everything else and write the result through the audit API.
+1. State matches.
+   - Compare submitted `state_code` or `state_name` with the certificate, license, permit, or proof document state.
+   - If the document does not directly state a two-letter state, use state government names, document title, issuing authority, address, or state code as state evidence.
+   - If the states clearly differ, return `status=rejected` with `the document provided is not a valid tax exemption certificate.` Stop the automatic approval review.
+
+2. Document is currently valid.
+   - If the document explicitly expired, return `status=rejected` with `the submitted tax exemption certificate is expired.`
+   - If the document is revoked, void, sample-only, incomplete, clearly unfinished, or not applicable, return `status=rejected` with `the document provided is not a valid tax exemption certificate.`
+
+3. Document content proves tax-exempt or resale purchasing qualification.
+   - Do not require the title to say `resale certificate` or `exemption certificate`.
+   - Accept documents such as `Sales Tax License`, `Seller's Permit`, `Sales and Use Tax Permit`, `Agricultural Permit`, or similar proof when the body text clearly supports resale or tax-exempt purchases.
+   - Supporting text includes `resale`, `tax exempt purchase`, `exempt purchase`, `purchase items tax exempt`, `for purpose of resale`, agricultural exemption, government exemption, or equivalent wording.
+   - Reject ordinary business licenses, receipts, invoices, unrelated photos, landscape images, blank files, screenshots without certificate text, generic business documents, and unfinished templates that cannot prove exemption or resale qualification.
+
+4. Name matches.
+   - Certificate organization, purchaser, customer, licensee, owner, or permit holder name must reasonably match submitted `organization_name`.
+   - Normalize case, punctuation, legal suffixes, and repeated spaces. Accept clear variants such as `Inc` vs `Incorporated` and `LLC` vs `L.L.C.`.
+   - For agricultural or owner/operator documents, accept a personal name, farm name, company name, or operating entity relationship only when the relationship is clear enough to explain in the audit reason.
+   - Reject when the certificate and submitted application appear to be different entities.
+
+5. ID matches.
+   - Compare relevant certificate IDs with submitted `state_tax_number` or `exemption_num`.
+   - Accept Tax ID, Exempt ID, Permit Number, Account Number, Registration Number, License Number, or equivalent state-issued identifier.
+   - Ignore spaces, hyphens, and case for comparison.
+   - Prefer IDs related to the exemption, resale, permit, account, or license qualification over addresses, phone numbers, and unrelated numbers.
+   - Reject when the relevant ID clearly differs or cannot be found after full extraction.
+
+6. Expiration can be computed and is not already expired.
+   - Compute `expired_at` by the rules below.
+   - If the final computed cutoff is already in the past, return `status=rejected` with `the submitted tax exemption certificate is expired.`
+
+Return `status=approved` only if all six ordered checks pass.
 
 ## Speed Rules
 
@@ -35,18 +59,6 @@ Return `status=rejected` for everything else and write the result through the au
    - Do not bulk approve without per-item evidence.
    - Count every reviewed item as `approved` or `rejected`.
 
-## Confidence Policy
-
-Assign `approval_confidence` for each reviewed item:
-
-- `high`: every required approval check has direct evidence from submitted metadata plus extracted certificate text/vision, document type is clearly a tax exemption certificate, expiration can be computed, and there are no contradictions.
-- `medium`: the document appears relevant but at least one required field is inferred, partially unreadable, missing, ambiguous, or unsupported by direct evidence.
-- `low`: the file is unrelated, blank, a landscape/photo, not certificate-like, OCR is poor, core fields are unreadable, or extracted evidence conflicts with submitted metadata.
-
-Only `high` confidence may be approved.
-`medium` and `low` confidence must be written as `status=rejected` for human follow-up.
-Any missing, unknown, unreadable, unsupported, or contradictory required field prevents `high` confidence.
-
 ## Field Normalization
 
 - State: compare both two-letter code and full name when available. Normalize case, spaces, and punctuation.
@@ -63,11 +75,21 @@ Return `expired_at` as `YYYY-MM-DD 23:59:59` in US Eastern business time unless 
 
 2. No explicit expiration date, but issue/signature date exists:
    - Use issue/signature date plus one year.
+   - If that computed date is already in the past and submitted `created_at` is available, use December 31 of the submitted year.
 
-3. No explicit expiration date and no issue/signature date:
+3. No explicit expiration date, but effective date exists:
+   - Use effective date plus one year.
+   - If that computed date is already in the past and submitted `created_at` is available, use December 31 of the submitted year.
+
+4. Document states `valid until revoked` or `valid until cancelled` without an explicit expiration date:
+   - Use issue/signature/effective date plus one year when available.
+   - If that computed date is already in the past and submitted `created_at` is available, use December 31 of the submitted year.
+
+5. No explicit expiration date and no issue/signature/effective date:
    - Use submitted `created_at` plus one year.
 
-If a computed expiration date is already in the past, return `status=rejected` .
+The fallback to December 31 of the submitted year applies only when the document has no explicit expiration date. Never override an explicit expiration date with the submitted-year fallback.
+If the final computed expiration date is already in the past, return `status=rejected`.
 
 ## Refuse Reason Mapping
 
@@ -97,5 +119,4 @@ After processing a batch, report:
 - Approved count.
 - Rejected count.
 - Skipped/error count.
-- Confidence counts: high, medium, low.
-- Rejected IDs, confidence, standard refuse reasons, and concise internal details requiring human follow-up.
+- Rejected IDs, standard refuse reasons, and concise internal details requiring human follow-up.

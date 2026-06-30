@@ -205,21 +205,45 @@ def add_one_year(value: dt.datetime) -> dt.datetime:
         return value.replace(month=2, day=28, year=value.year + 1)
 
 
-def cmd_expiry(args: argparse.Namespace) -> None:
-    source = ""
-    if args.explicit_expiration:
-        expiry = parse_date(args.explicit_expiration)
-        source = "explicit_expiration"
-    elif args.issue_date:
-        expiry = add_one_year(parse_date(args.issue_date))
-        source = "issue_date_plus_one_year"
-    elif args.submitted_at:
-        expiry = add_one_year(parse_date(args.submitted_at))
-        source = "submitted_at_plus_one_year"
-    else:
-        raise SystemExit("Provide --explicit-expiration, --issue-date, or --submitted-at.")
+def end_of_submitted_year(submitted_at: dt.datetime) -> dt.datetime:
+    return submitted_at.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=0)
 
-    expiry = expiry.replace(hour=23, minute=59, second=59)
+
+def compute_expiry_result(
+    explicit_expiration: Optional[str],
+    issue_date: Optional[str],
+    effective_date: Optional[str],
+    submitted_at: Optional[str],
+    today: Optional[dt.datetime] = None,
+) -> tuple[dt.datetime, str]:
+    if explicit_expiration:
+        return parse_date(explicit_expiration).replace(hour=23, minute=59, second=59), "explicit_expiration"
+
+    fallback_base_date = issue_date or effective_date
+    fallback_base_source = "issue_date" if issue_date else "effective_date"
+    if fallback_base_date:
+        expiry = add_one_year(parse_date(fallback_base_date)).replace(hour=23, minute=59, second=59)
+        if submitted_at:
+            now = today or dt.datetime.now(BUSINESS_TZ)
+            if now.tzinfo is None:
+                now = now.replace(tzinfo=BUSINESS_TZ)
+            if expiry < now:
+                return end_of_submitted_year(parse_date(submitted_at)), "submitted_year_end_fallback"
+        return expiry, f"{fallback_base_source}_plus_one_year"
+
+    if submitted_at:
+        return add_one_year(parse_date(submitted_at)).replace(hour=23, minute=59, second=59), "submitted_at_plus_one_year"
+
+    raise SystemExit("Provide --explicit-expiration, --issue-date, or --submitted-at.")
+
+
+def cmd_expiry(args: argparse.Namespace) -> None:
+    expiry, source = compute_expiry_result(
+        args.explicit_expiration,
+        args.issue_date,
+        args.effective_date,
+        args.submitted_at,
+    )
     print(json.dumps({"expired_at": expiry.strftime("%Y-%m-%d %H:%M:%S"), "source": source}, indent=2))
 
 
@@ -246,7 +270,10 @@ def cmd_draft(args: argparse.Namespace) -> None:
             "certificate_validity_status": "unknown",
             "explicit_expiration_date": "",
             "issue_or_signature_date": "",
-            "ocr_confidence": "unknown",
+            "effective_date": "",
+            "document_type_evidence": "",
+            "qualification_text_evidence": "",
+            "readability": "unknown",
             "evidence": [],
         },
         "ocr_text_preview": ocr_text[:2000],
@@ -296,6 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
     expiry = sub.add_parser("expiry", help="Compute expiration date")
     expiry.add_argument("--explicit-expiration")
     expiry.add_argument("--issue-date")
+    expiry.add_argument("--effective-date")
     expiry.add_argument("--submitted-at")
     expiry.set_defaults(func=cmd_expiry)
 
